@@ -1,3 +1,7 @@
+3.4.0
+=====
+* Added `inventory` and `ask_inventory_on_launch` to WFJTs.[[#2256](https://github.com/ansible/awx/issues/2256)]
+
 3.3.0
 =====
 * Allow relaunching jobs on a subset of hosts, by status.[[#219](https://github.com/ansible/awx/issues/219)]

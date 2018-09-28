@@ -29,8 +29,9 @@ class WorkflowDAG(SimpleDAG):
         for index, n in enumerate(nodes):
             obj = n['node_object']
             job = obj.job
+            dnr = obj.do_not_run
 
-            if not job:
+            if not job and not dnr:
                 nodes_found.append(n)
             # Job is about to run or is running. Hold our horses and wait for
             # the job to finish. We can't proceed down the graph path until we
@@ -97,3 +98,45 @@ class WorkflowDAG(SimpleDAG):
                 # have the job result.
                 return False, False
         return True, is_failed
+
+    def mark_dnr_nodes(self):
+        root_nodes = self.get_root_nodes()
+        nodes = root_nodes
+        nodes_found = []
+        nodes_marked_do_not_run = []
+
+        for index, n in enumerate(nodes):
+            obj = n['node_object']
+            job = obj.job
+
+            if not job and not obj.do_not_run:
+                parent_nodes = [p['node_object'] for p in self.get_dependents(obj)]
+                all_parents_dnr = True
+                for p in parent_nodes:
+                    if not p.job and p.do_not_run == False:
+                        all_parents_dnr = False
+                        break
+                #all_parents_dnr = reduce(lambda p: bool(p.do_not_run == True), parent_nodes)
+                if all_parents_dnr:
+                    obj.do_not_run = True
+                    nodes_marked_do_not_run.append(n)
+
+            if obj.do_not_run:
+                children_success = self.get_dependencies(obj, 'success_nodes')
+                children_failed = self.get_dependencies(obj, 'failure_nodes')
+                children_always = self.get_dependencies(obj, 'always_nodes')
+                children_all = children_failed + children_always
+                nodes.extend(children_all)
+            elif job and job.status == 'failed':
+                children_failed = self.get_dependencies(obj, 'success_nodes')
+                children_always = self.get_dependencies(obj, 'always_nodes')
+                children_all = children_failed + children_always
+                nodes.extend(children_all)
+            elif job and job.status == 'successful':
+                children_success = self.get_dependencies(obj, 'failure_nodes')
+                children_always = self.get_dependencies(obj, 'always_nodes')
+                children_all = children_success + children_always
+                nodes.extend(children_all)
+        return [n['node_object'] for n in nodes_marked_do_not_run]
+
+

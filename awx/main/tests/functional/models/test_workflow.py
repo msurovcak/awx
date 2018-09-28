@@ -100,6 +100,60 @@ class TestWorkflowDAGFunctional(TransactionTestCase):
 
 
 @pytest.mark.django_db
+class TestWorkflowDNR():
+    'success', 'new'
+
+    @pytest.fixture
+    def workflow_job_fn(self):
+        def fn(states=['new', 'new', 'new', 'new', 'new', 'new']):
+            """
+            Workflow topology:
+                   node[0]
+                    /\
+                  s/  \f
+                  /    \
+               node[1] node[3]
+                 /       \
+               s/         \f
+               /           \
+            node[2]       node[4]
+               \           /
+                \         /
+                 \       /
+                  s     f
+                   \   /
+                    \ /
+                  node[5]
+            """
+            wfj = WorkflowJob.objects.create()
+            jt = JobTemplate.objects.create(name='test-jt')
+            nodes = [WorkflowJobNode.objects.create(workflow_job=wfj, unified_job_template=jt) for i in range(0, 6)]
+            for node, state in zip(nodes, states):
+                if state:
+                    node.job = jt.create_job()
+                    node.job.status = state
+                    node.job.save()
+                    node.save()
+            print("node id of 0 is {}".format(nodes[0].id))
+            nodes[0].success_nodes.add(nodes[1])
+            nodes[1].success_nodes.add(nodes[2])
+            nodes[0].failure_nodes.add(nodes[3])
+            nodes[3].failure_nodes.add(nodes[4])
+            nodes[2].success_nodes.add(nodes[5])
+            nodes[4].failure_nodes.add(nodes[5])
+            return wfj, nodes
+        return fn
+
+    def test_workflow_dnr_because_parent(self, workflow_job_fn):
+        wfj, nodes = workflow_job_fn(states=['successful', None, None, None, None, None,])
+        dag = WorkflowDAG(workflow_job=wfj)
+        workflow_nodes = dag.mark_dnr_nodes()
+        assert len(workflow_nodes) == 2
+        assert nodes[3] in workflow_nodes
+        assert nodes[4] in workflow_nodes
+
+
+@pytest.mark.django_db
 class TestWorkflowJob:
     @pytest.fixture
     def workflow_job(self, workflow_job_template_factory):

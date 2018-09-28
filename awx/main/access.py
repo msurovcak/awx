@@ -1947,27 +1947,37 @@ class WorkflowJobAccess(BaseAccess):
         if self.user.is_superuser:
             return True
 
-        wfjt = obj.workflow_job_template
+        template = obj.unified_job_template
         # only superusers can relaunch orphans
-        if not wfjt:
+        if not template:
             return False
 
-        # If job was launched by another user, it could have survey passwords
-        if obj.created_by_id != self.user.pk:
-            # Obtain prompts used to start original job
-            JobLaunchConfig = obj._meta.get_field('launch_config').related_model
-            try:
-                config = JobLaunchConfig.objects.get(job=obj)
-            except JobLaunchConfig.DoesNotExist:
-                config = None
+        # Obtain prompts used to start original job
+        JobLaunchConfig = obj._meta.get_field('launch_config').related_model
+        try:
+            config = JobLaunchConfig.objects.get(job=obj)
+        except JobLaunchConfig.DoesNotExist:
+            if self.save_messages:
+                self.messages['detail'] = _('Workflow Job was launched with unknown prompts.')
+            return False
 
-            if config is None or config.prompts_dict():
+        # Check if access to prompts to prevent relaunch
+        if config.prompts_dict():
+            if obj.created_by_id != self.user.pk:
                 if self.save_messages:
                     self.messages['detail'] = _('Job was launched with prompts provided by another user.')
                 return False
+            if not JobLaunchConfigAccess(self.user).can_add({'reference_obj': config}):
+                if self.save_messages:
+                    self.messages['detail'] = _('Job was launched with prompts you lack access to.')
+                return False
+            if config.has_unprompted(template):
+                if self.save_messages:
+                    self.messages['detail'] = _('Job was launched with prompts no longer accepted.')
+                return False
 
         # execute permission to WFJT is mandatory for any relaunch
-        return (self.user in wfjt.execute_role)
+        return (self.user in template.execute_role)
 
     def can_recreate(self, obj):
         node_qs = obj.workflow_job_nodes.all().prefetch_related('inventory', 'credentials', 'unified_job_template')

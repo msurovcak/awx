@@ -6,4 +6,5 @@ sed -i "s/placeholder/$(cat /awx_devel/VERSION)/" /awx_devel/awx.egg-info/PKG-IN
 cp /tmp/awx.egg-link /venv/awx/lib/python2.7/site-packages/awx.egg-link
 
 cp awx/settings/local_settings.py.docker_compose awx/settings/local_settings.py
+echo "import awx; print awx.__file__" | awx-manage shell
 make test
